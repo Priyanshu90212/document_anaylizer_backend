@@ -1,15 +1,16 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
-import { CreateDocumentDto } from './dto/create-document.dto';
-import { UpdateDocumentDto } from './dto/update-document.dto';
+import type { Express } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 
-@Controller('documents')
+@Controller('api/documents')
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
   
   @Post()
-  create(@Body() createDocumentDto: CreateDocumentDto) {
-    return this.documentsService.create(createDocumentDto);
+  @UseInterceptors(FileInterceptor("file"))
+  create(@UploadedFile() file: any) {
+    return this.documentsService.create(file);
   }
 
   @Get()
@@ -23,7 +24,7 @@ export class DocumentsController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDocumentDto: UpdateDocumentDto) {
+  update(@Param('id') id: string, @Body() updateDocumentDto: any) {
     return this.documentsService.update(+id, updateDocumentDto);
   }
 
