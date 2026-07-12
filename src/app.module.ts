@@ -8,10 +8,18 @@ import { ConfigModule } from '@nestjs/config';
 import { SupabaseModule } from './modules/supabase.module';
 import { AiService } from './ai/ai.service';
 import { AiController } from './ai/ai.controller';
+import { BullModule } from '@nestjs/bullmq';
+import { RedisModule } from './modules/redis.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
-  imports: [DocumentsModule, ConfigModule.forRoot({isGlobal: true}), SupabaseModule],
-  controllers: [AppController, DocumentsController, AiController],
-  providers: [AppService, DocumentsService, AiService],
+  imports: [ConfigModule.forRoot({isGlobal: true}), 
+    DocumentsModule, 
+    SupabaseModule, 
+    RedisModule,
+    AiModule
+  ],
+  controllers: [AppController, AiController],
+  providers: [AppService, AiService],
 })
 export class AppModule {}

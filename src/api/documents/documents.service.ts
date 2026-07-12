@@ -1,16 +1,19 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { HttpException, Injectable } from '@nestjs/common';
+import { Queue } from 'bullmq';
 import { randomUUID } from 'crypto';
 import calculateHash from 'helpers/createHashDocument';
 import { SupabaseService } from 'src/service/supabase.service';
-
 @Injectable()
 export class DocumentsService {
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(private readonly supabaseService: SupabaseService,
+     @InjectQueue("document-processing")
+     private readonly documentQueue: Queue
+) {}
   async create(createDocumentDto: any) {
     try {
       const client = this.supabaseService.getClient();
       const hashed_file_name = calculateHash(createDocumentDto.buffer);
-      console.log(createDocumentDto);
 
       let getImage = (
         await client.storage.from('Documents').exists(hashed_file_name)
@@ -43,14 +46,21 @@ export class DocumentsService {
 
       const { data, error } = await client
         .from('documents_meta')
-        .insert(payload);
+        .insert(payload).select().single();
 
       if (uploadError || error) {
-           throw new Error('Invalid Problem in While Uploading Document.');
+         throw new Error('Invalid Problem in While Uploading Document.');
       }
+      console.log(data);
+      await this.documentQueue.add("process-document", {
+        documentId: data?.id
+      })
+       
+
       return {
         data: {
-          imageData: uploadData,
+          id: '40',
+          status: "PROCESSING",
         },
       };
     } catch (error: any) {
