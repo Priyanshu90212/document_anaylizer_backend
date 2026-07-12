@@ -19,7 +19,7 @@ import { AiModule } from './ai/ai.module';
     RedisModule,
     AiModule
   ],
-  controllers: [AppController, AiController],
-  providers: [AppService, AiService],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}
