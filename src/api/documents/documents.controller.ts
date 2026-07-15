@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UploadedFile, UseInterceptors, Res, Req } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
-import type { Express } from 'express';
+import type { Express, Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { debug } from 'console';
 
 @Controller('api/documents')
 export class DocumentsController {
@@ -15,21 +16,44 @@ export class DocumentsController {
 
   @Get()
   findAll() {
-    return this.documentsService.findAll();
+    // return this.documentsService.findAll();
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.documentsService.findOne(+id);
+  @Post("/chat_ai")
+  async chat_ai(
+      @Param('documentId') documentId: string,
+      @Body('message') message: string,
+    ) {
+     try {
+       
+       console.log(message)
+       let AIresponse = await this.documentsService.chatMessageAI(message, documentId);
+   
+       console.log(AIresponse.ai_message);
+       return {
+           aiMessage: AIresponse.ai_message
+       }
+     } catch (error: any) {
+      return {
+        error: error.message
+      }
+        // res.json({error: error.message})
+      }
+    
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDocumentDto: any) {
-    return this.documentsService.update(+id, updateDocumentDto);
-  }
+  // @Get(':id')
+  // findOne(@Param('id') id: string) {
+  //   return this.documentsService.findOne(+id);
+  // }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.documentsService.remove(+id);
-  }
+  // @Patch(':id')
+  // update(@Param('id') id: string, @Body() updateDocumentDto: any) {
+  //   return this.documentsService.update(+id, updateDocumentDto);
+  // }
+
+  // @Delete(':id')
+  // remove(@Param('id') id: string) {
+  //   return this.documentsService.remove(+id);
+  // }
 }

@@ -17,7 +17,7 @@ import { AiModule } from './ai/ai.module';
     DocumentsModule, 
     SupabaseModule, 
     RedisModule,
-    AiModule
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
