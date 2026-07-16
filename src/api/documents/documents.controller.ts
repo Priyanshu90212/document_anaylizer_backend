@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UploadedFile, UseInterceptors, Res, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UploadedFile, UseInterceptors, Res, Req, Query, ParseFilePipe, FileTypeValidator, BadRequestException, MaxFileSizeValidator } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
 import type { Express, Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -10,7 +10,18 @@ export class DocumentsController {
   
   @Post()
   @UseInterceptors(FileInterceptor("file"))
-  create(@UploadedFile() file: any) {
+  create(@UploadedFile(new ParseFilePipe({validators: [new MaxFileSizeValidator({
+    maxSize: 2 * 1024 * 1024
+  }) , new FileTypeValidator({
+    fileType: /(pdf|csv|vnd.openxmlformats-officedocument.wordprocessingml.document|plain|vnd.openxmlformats-officedocument.spreadsheetml.sheet)$/,
+    })], exceptionFactory(error) {
+      return new BadRequestException(
+       {
+          type:  'Only PDF, CSV, DOCX, TXT, and XLSX files are allowed.',
+          size: "Only less than 2mb file exist."
+       },
+      );
+    },})) file: any) {
     return this.documentsService.create(file);
   }
 
@@ -21,23 +32,19 @@ export class DocumentsController {
 
   @Post("/chat_ai")
   async chat_ai(
-      @Param('documentId') documentId: string,
+      @Query('documentId') documentId: string,
       @Body('message') message: string,
     ) {
      try {
-       
-       console.log(message)
+       console.log('ggg')
        let AIresponse = await this.documentsService.chatMessageAI(message, documentId);
-   
-       console.log(AIresponse.ai_message);
-       return {
+        return {
            aiMessage: AIresponse.ai_message
-       }
+        }
      } catch (error: any) {
-      return {
-        error: error.message
-      }
-        // res.json({error: error.message})
+        return {
+           error: error.message
+        }
       }
     
   }

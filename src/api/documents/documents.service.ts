@@ -62,7 +62,7 @@ export class DocumentsService {
       if (uploadError || error) {
         throw new Error('Invalid Problem in While Uploading Document.');
       }
-      console.log(data);
+      // console.log(data);
       await this.documentQueue.add('process-document', {
         documentId: 'cd668a6c-3353-4657-a5f6-1150b74c2198',
       });
@@ -116,14 +116,17 @@ export class DocumentsService {
 
   async chatMessageAI(message: string, documentId: string) {
     let document = await this.getDocumentById(documentId);
-
-    return {
-      document: document
-    }
     let extractedText = await this.parserService.extractDocument(
       document.document_file_hash,
-      document.mime_type,
+      document.mime_type, 
     );
+    console.log(extractedText, "Ai Response")
+
+     this.documentQueue.add('add-chat', {
+       documentId: documentId,
+       message: message,
+       message_sender: "USER"
+    })
     const prompt = `
             You are an AI assistant.
             
@@ -140,6 +143,13 @@ export class DocumentsService {
             - Do not make up facts.
             `;
     const aiResponse = await this.aiService.chat(prompt);
+    this.documentQueue.add('add-chat', {
+       documentId: documentId,
+       message: aiResponse,
+       message_sender: 'AI_ASSITANT'
+
+    })
+    console.log(aiResponse, "Ai Response")
     return {
          ai_message: aiResponse
     }
@@ -150,8 +160,8 @@ export class DocumentsService {
       .select()
       .eq('id', id)
       .single();
-      console.log(id)
-      console.log(current_record);
+      // console.log(id)
+      // console.log(current_record);
     let data = current_record.data;
 
     return data;
