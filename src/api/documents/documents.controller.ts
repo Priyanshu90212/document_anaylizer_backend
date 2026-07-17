@@ -36,7 +36,6 @@ export class DocumentsController {
       @Body('message') message: string,
     ) {
      try {
-       console.log('ggg')
        let AIresponse = await this.documentsService.chatMessageAI(message, documentId);
         return {
            aiMessage: AIresponse.ai_message
@@ -63,4 +62,20 @@ export class DocumentsController {
   // remove(@Param('id') id: string) {
   //   return this.documentsService.remove(+id);
   // }
+  @Post('/format')
+  async formatizer(
+      @Query('documentId') documentId: string,
+    ) {
+     try {
+       let AIresponse = await this.documentsService.formatizer(documentId);
+        return {
+           formattedString: AIresponse.aiResponse
+        }
+     } catch (error: any) {
+        return {
+           error: error.message
+        }
+      }
+    
+  }
 }

@@ -118,15 +118,15 @@ export class DocumentsService {
     let document = await this.getDocumentById(documentId);
     let extractedText = await this.parserService.extractDocument(
       document.document_file_hash,
-      document.mime_type, 
+      document.mime_type,
     );
-    console.log(extractedText, "Ai Response")
+    console.log(extractedText, 'Ai Response');
 
-     this.documentQueue.add('add-chat', {
-       documentId: documentId,
-       message: message,
-       message_sender: "USER"
-    })
+    this.documentQueue.add('add-chat', {
+      documentId: documentId,
+      message: message,
+      message_sender: 'USER',
+    });
     const prompt = `
             You are an AI assistant.
             
@@ -144,15 +144,14 @@ export class DocumentsService {
             `;
     const aiResponse = await this.aiService.chat(prompt);
     this.documentQueue.add('add-chat', {
-       documentId: documentId,
-       message: aiResponse,
-       message_sender: 'AI_ASSITANT'
-
-    })
-    console.log(aiResponse, "Ai Response")
+      documentId: documentId,
+      message: aiResponse,
+      message_sender: 'AI_ASSITANT',
+    });
+    console.log(aiResponse, 'Ai Response');
     return {
-         ai_message: aiResponse
-    }
+      ai_message: aiResponse,
+    };
   }
   async getDocumentById(id: string) {
     let current_record = await this.client
@@ -160,16 +159,72 @@ export class DocumentsService {
       .select()
       .eq('id', id)
       .single();
-      // console.log(id)
-      // console.log(current_record);
+    // console.log(id)
+    // console.log(current_record);
     let data = current_record.data;
 
     return data;
   }
 
-  // async chatMessageAI(message: string) {
-  //      this.aiService.chat("generate a normal text message good and ")
-  // }
+  async formatizer(id: string) {
+    const document = await this.getDocumentById(id);
+    console.log(document);
+    const text = await this.parserService.extractDocument(
+      document.document_file_hash,
+      document.mime_type,
+    );
+
+    const prompt = `
+       You are an expert document formatter.
+       
+       Document Metadata:
+       - MIME Type: ${document.mime_type}
+       
+       Your task is to transform the extracted document into clean, structured Markdown while preserving every piece of information.
+       
+       Rules:
+       - Preserve 100% of the content. Do NOT summarize, omit, or invent information.
+       - Return ONLY the formatted Markdown.
+       - Fix common OCR and extraction issues:
+         - Broken line breaks
+         - Extra whitespace
+         - Split words caused by extraction
+         - Duplicate lines
+       - Maintain the original reading order.
+       - Use appropriate Markdown structure:
+         - # Main title
+         - ## Sections
+         - ### Subsections
+         - Bullet lists
+         - Numbered lists
+         - Blockquotes where appropriate
+         - Markdown tables when the original content is tabular
+       - Format key-value data as:
+         - **Field:** Value
+       - Preserve:
+         - Dates
+         - Numbers
+         - IDs
+         - URLs
+         - Email addresses
+         - Phone numbers
+         - Technical terms
+       - If the document is poorly extracted, infer the most logical structure without changing the meaning.
+       - If the MIME type indicates a spreadsheet or CSV, preserve rows and columns as Markdown tables.
+       - If the MIME type indicates HTML, extract the meaningful content while ignoring unnecessary markup.
+       - If the document contains code, preserve it in fenced code blocks.
+       - If a table cannot be reconstructed reliably, represent it as nested bullet points rather than guessing.
+       - Never add explanations, comments, introductions, or conclusions.
+       - you can html tag too according to mime type if user proper html style elemement.
+       Raw Document:
+       ${text}
+       `;
+
+    const aiResponse = await this.aiService.chat(prompt);
+    return {
+      aiResponse
+    }
+  }
 
   // findAll() {
   //   return `This action returns all documents`;
