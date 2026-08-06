@@ -21,8 +21,15 @@ export class AiService {
           content: message,
         },
       ],
-    });
+    }, {stream: true});
 
     return completion.choices[0].message.content;
+  }
+  async chatStream(message: string) {
+      return this.AI.chat.completions.create({
+    model: "llama-3.3-70b-versatile",
+    stream: true,
+    messages: [{ role: "user", content: message }],
+  });
   }
 }

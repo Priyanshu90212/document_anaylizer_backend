@@ -1,12 +1,11 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UploadedFile, UseInterceptors, Res, Req, Query, ParseFilePipe, FileTypeValidator, BadRequestException, MaxFileSizeValidator } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UploadedFile, UseInterceptors, Res, Req, Query, ParseFilePipe, FileTypeValidator, BadRequestException, MaxFileSizeValidator, Sse } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
-import type { Express, Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { debug } from 'console';
+import { ServerSideEventsService } from 'src/Server_side_events/SSE.service';
 
 @Controller('api/documents')
 export class DocumentsController {
-  constructor(private readonly documentsService: DocumentsService) {}
+  constructor(private readonly documentsService: DocumentsService, private readonly SSEevents: ServerSideEventsService) {}
   
   @Post()
   @UseInterceptors(FileInterceptor("file"))
@@ -46,7 +45,16 @@ export class DocumentsController {
         }
       }
     
-  }
+  } 
+  @Get("test")
+test() {
+
+  return "sent";
+}
+@Sse(":id/events")
+stream(@Param("id") id: string) {
+  return this.SSEevents.getStream(id);
+}
 
   // @Get(':id')
   // findOne(@Param('id') id: string) {
@@ -62,20 +70,20 @@ export class DocumentsController {
   // remove(@Param('id') id: string) {
   //   return this.documentsService.remove(+id);
   // }
-  @Post('/format')
-  async formatizer(
-      @Query('documentId') documentId: string,
-    ) {
-     try {
-       let AIresponse = await this.documentsService.formatizer(documentId);
-        return {
-           formattedString: AIresponse.aiResponse
-        }
-     } catch (error: any) {
-        return {
-           error: error.message
-        }
-      }
+  // @Post('/format')
+  // async formatizer(
+  //     @Query('documentId') documentId: string,
+  //   ) {
+  //    try {
+  //      let AIresponse = await this.documentsService.formatizer(documentId);
+  //       return {
+  //          formattedString: AIresponse.aiResponse
+  //       }
+  //    } catch (error: any) {
+  //       return {
+  //          error: error.message
+  //       }
+  //     }
     
-  }
+  // }
 }

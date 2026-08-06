@@ -1,10 +1,11 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { HttpException, Injectable } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Queue } from 'bullmq';
+import { Queue, tryCatch } from 'bullmq';
 import { randomUUID } from 'crypto';
 import calculateHash from 'helpers/createHashDocument';
 import { AiService } from 'src/ai/ai.service';
+import { ServerSideEventsService } from 'src/Server_side_events/SSE.service';
 import { ParserService } from 'src/service/parser.service';
 import { SupabaseService } from 'src/service/supabase.service';
 @Injectable()
@@ -16,6 +17,7 @@ export class DocumentsService {
     private readonly documentQueue: Queue,
     private readonly aiService: AiService,
     private readonly parserService: ParserService,
+    private readonly SSeService: ServerSideEventsService,
   ) {
     this.client = this.supabaseService.getClient();
   }
@@ -23,7 +25,6 @@ export class DocumentsService {
     try {
       const client = this.client;
       const hashed_file_name = calculateHash(createDocumentDto.buffer);
-
       let getImage = (
         await client.storage.from('Documents').exists(hashed_file_name)
       ).data;
@@ -32,11 +33,10 @@ export class DocumentsService {
         .select('id')
         .eq('document_file_hash', hashed_file_name)
         .maybeSingle();
-      if (getImage || existRecord.data?.id) {
+      if (getImage && existRecord.success) {
         return {
-          data: {
-            message: 'Already Exist',
-          },
+          exist: true,
+          message: 'Already Exist',
         };
       }
       const { data: uploadData, error: uploadError } = await client.storage
@@ -62,16 +62,12 @@ export class DocumentsService {
       if (uploadError || error) {
         throw new Error('Invalid Problem in While Uploading Document.');
       }
-      // console.log(data);
       await this.documentQueue.add('process-document', {
-        documentId: 'cd668a6c-3353-4657-a5f6-1150b74c2198',
+        documentId: data.id,
       });
 
       return {
-        data: {
-          id: '40',
-          status: 'PROCESSING',
-        },
+        id: data.id,
       };
     } catch (error: any) {
       throw new Error(error.message);
@@ -79,24 +75,75 @@ export class DocumentsService {
   }
 
   async generateSummary(id: string) {
+    
     let data = await this.getDocumentById(id);
     let points: any;
     if (data) {
-      let extracted = this.parserService.extractDocument(
+      let extracted = await this.parserService.extractDocument(
         data.document_file_hash,
         data.mime_type,
       );
-      points = await this.aiService.chat(`
-                 Analyze the following document.
-                Return ONLY valid JSON in this format:
-             {
-               "summary": "Short summary",
-               "points": String[]
-               ]
-             }
-             Document:
-             ${extracted}`);
+      points = await this.aiService.chatStream(`
+           Analyze the following document.
+
+Format your response using valid Markdown.
+
+Structure:
+
+# Document Summary
+
+Write 1-2 concise paragraphs summarizing the document.
+
+## Key Points
+
+- Point 1
+- Point 2
+- Point 3
+- Point 4
+
+## Important Information (only if applicable)
+
+Use a table if the document contains structured data.
+
+## Conclusion (only if applicable)
+
+Write a short concluding paragraph.
+
+Formatting rules:
+- Use Markdown only.
+- Do NOT return JSON.
+- Do NOT use Markdown code fences.
+- Use headings (#, ##, ###).
+- Use bullet lists (-).
+- Use numbered lists when there is a sequence.
+- Use **bold** only for important terms.
+- Use *italic* only when necessary.
+- Use tables whenever they improve readability.
+- Use blockquotes (>) only for important notes or warnings.
+- Keep paragraphs short (2–4 sentences).
+- Leave one blank line between sections.
+- Start immediately with "# Document Summary".
+
+Document:
+${extracted}`);
     }
+
+let fullResponse = '';
+console.log(points, "points")
+for await (const chunk of points  ) {
+  const content = chunk.choices[0]?.delta?.content;
+
+  if (!content) continue;
+
+  fullResponse += content;
+  console.log(content, "content")
+
+  this.SSeService.send(id, {
+    event: 'chunk',
+    chunk: content,
+  });
+}
+
     if (data) {
       let { data: summaryData, error: summaryError } = await this.client
         .from('summary_points')
@@ -105,6 +152,7 @@ export class DocumentsService {
           document_hash_id: data.document_file_hash,
           summary_points: points,
         });
+
       if (!summaryError) {
         return {
           status: 'COMPLETED',
@@ -166,65 +214,65 @@ export class DocumentsService {
     return data;
   }
 
-  async formatizer(id: string) {
-    const document = await this.getDocumentById(id);
-    console.log(document);
-    const text = await this.parserService.extractDocument(
-      document.document_file_hash,
-      document.mime_type,
-    );
+  // async formatizer(id: string) {
+  //   const document = await this.getDocumentById(id);
+  //   console.log(document);
+  //   const text = await this.parserService.extractDocument(
+  //     document.document_file_hash,
+  //     document.mime_type,
+  //   );
 
-    const prompt = `
-       You are an expert document formatter.
-       
-       Document Metadata:
-       - MIME Type: ${document.mime_type}
-       
-       Your task is to transform the extracted document into clean, structured Markdown while preserving every piece of information.
-       
-       Rules:
-       - Preserve 100% of the content. Do NOT summarize, omit, or invent information.
-       - Return ONLY the formatted Markdown.
-       - Fix common OCR and extraction issues:
-         - Broken line breaks
-         - Extra whitespace
-         - Split words caused by extraction
-         - Duplicate lines
-       - Maintain the original reading order.
-       - Use appropriate Markdown structure:
-         - # Main title
-         - ## Sections
-         - ### Subsections
-         - Bullet lists
-         - Numbered lists
-         - Blockquotes where appropriate
-         - Markdown tables when the original content is tabular
-       - Format key-value data as:
-         - **Field:** Value
-       - Preserve:
-         - Dates
-         - Numbers
-         - IDs
-         - URLs
-         - Email addresses
-         - Phone numbers
-         - Technical terms
-       - If the document is poorly extracted, infer the most logical structure without changing the meaning.
-       - If the MIME type indicates a spreadsheet or CSV, preserve rows and columns as Markdown tables.
-       - If the MIME type indicates HTML, extract the meaningful content while ignoring unnecessary markup.
-       - If the document contains code, preserve it in fenced code blocks.
-       - If a table cannot be reconstructed reliably, represent it as nested bullet points rather than guessing.
-       - Never add explanations, comments, introductions, or conclusions.
-       - you can html tag too according to mime type if user proper html style elemement.
-       Raw Document:
-       ${text}
-       `;
+  //   const prompt = `
+  //      You are an expert document formatter.
 
-    const aiResponse = await this.aiService.chat(prompt);
-    return {
-      aiResponse
-    }
-  }
+  //      Document Metadata:
+  //      - MIME Type: ${document.mime_type}
+
+  //      Your task is to transform the extracted document into clean, structured Markdown while preserving every piece of information.
+
+  //      Rules:
+  //      - Preserve 100% of the content. Do NOT summarize, omit, or invent information.
+  //      - Return ONLY the formatted Markdown.
+  //      - Fix common OCR and extraction issues:
+  //        - Broken line breaks
+  //        - Extra whitespace
+  //        - Split words caused by extraction
+  //        - Duplicate lines
+  //      - Maintain the original reading order.
+  //      - Use appropriate Markdown structure:
+  //        - # Main title
+  //        - ## Sections
+  //        - ### Subsections
+  //        - Bullet lists
+  //        - Numbered lists
+  //        - Blockquotes where appropriate
+  //        - Markdown tables when the original content is tabular
+  //      - Format key-value data as:
+  //        - **Field:** Value
+  //      - Preserve:
+  //        - Dates
+  //        - Numbers
+  //        - IDs
+  //        - URLs
+  //        - Email addresses
+  //        - Phone numbers
+  //        - Technical terms
+  //      - If the document is poorly extracted, infer the most logical structure without changing the meaning.
+  //      - If the MIME type indicates a spreadsheet or CSV, preserve rows and columns as Markdown tables.
+  //      - If the MIME type indicates HTML, extract the meaningful content while ignoring unnecessary markup.
+  //      - If the document contains code, preserve it in fenced code blocks.
+  //      - If a table cannot be reconstructed reliably, represent it as nested bullet points rather than guessing.
+  //      - Never add explanations, comments, introductions, or conclusions.
+  //      - you can html tag too according to mime type if user proper html style elemement.
+  //      Raw Document:
+  //      ${text}
+  //      `;
+
+  //   const aiResponse = await this.aiService.chat(prompt);
+  //   return {
+  //     aiResponse
+  //   }
+  // }
 
   // findAll() {
   //   return `This action returns all documents`;

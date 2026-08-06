@@ -6,13 +6,14 @@ import { BullModule } from '@nestjs/bullmq';
 import { DocumentProcessor } from './queues/document.workers';
 import { AiModule } from 'src/ai/ai.module';
 import { ParserService } from 'src/service/parser.service';
+import { ServerSideEventsService } from 'src/Server_side_events/SSE.service';
 
 @Module({
   imports: [SupabaseModule, BullModule.registerQueue({
     name: "document-processing"
   }), AiModule],
   controllers: [DocumentsController],
-  providers: [DocumentsService, DocumentProcessor, ParserService],
+  providers: [DocumentsService, DocumentProcessor, ParserService, ServerSideEventsService],
 })
 export class DocumentsModule {
   
