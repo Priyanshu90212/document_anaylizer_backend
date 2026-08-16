@@ -24,10 +24,7 @@ export class DocumentsController {
     return this.documentsService.create(file);
   }
 
-  @Get()
-  findAll() {
-    // return this.documentsService.findAll();
-  }
+
 
   @Post("/chat_ai")
   async chat_ai(
@@ -37,7 +34,7 @@ export class DocumentsController {
      try {
        let AIresponse = await this.documentsService.chatMessageAI(message, documentId);
         return {
-           aiMessage: AIresponse.ai_message
+           success: AIresponse.success
         }
      } catch (error: any) {
         return {
@@ -46,14 +43,25 @@ export class DocumentsController {
       }
     
   } 
-  @Get("test")
-test() {
-
-  return "sent";
+@Sse("summary/:id/events")
+summaryStream(@Param("id") id: string) {
+  return this.SSEevents.getStream(`summary:${id}`);
 }
-@Sse(":id/events")
-stream(@Param("id") id: string) {
-  return this.SSEevents.getStream(id);
+
+@Sse("chat/:id/events")
+chatStream(@Param("id") id: string) {
+  return this.SSEevents.getStream(`chat:${id}`);
+}
+
+@Get("/document-chats/:id")
+async getChatsPerId(@Param('id') documentId: string) {
+  try {
+     const data = await this.documentsService.getChatsPerId(documentId);
+     return {data}  
+  } catch (error: any) {
+     throw new Error(error.message);
+  }
+  
 }
 
   // @Get(':id')
@@ -86,4 +94,23 @@ stream(@Param("id") id: string) {
   //     }
     
   // }
+
+
+  @Post("/get-summary/:id")
+async getSummary(@Param('id') id: string) {
+  const data = await this.documentsService.getSummaryPoints(id);
+
+  return {
+    data
+  };
+}
+@Get("/get-recent-info")
+async getRecentInformation() {
+    const data = await this.documentsService.getRecentInformation();
+    return {
+      data
+    }
+}
+
+
 }

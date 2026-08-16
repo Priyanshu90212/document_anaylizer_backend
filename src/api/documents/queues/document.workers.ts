@@ -23,7 +23,7 @@ export class DocumentProcessor extends WorkerHost {
 
       case 'add-chat':
         return await this.addChat(
-          documentId,
+          documentId, 
           job.data.message,
           job.data.message_sender,
         );
@@ -38,6 +38,7 @@ export class DocumentProcessor extends WorkerHost {
   async addChat(id: string, message: string, message_sender: string) {
     const document = await this.documentService.getDocumentById(id);
     const client = this.supabaseService.getClient();
+
     await client.from('users_to_document_ai_chat').insert({
       document_id: document.id,
       document_hash_id: document.document_file_hash,

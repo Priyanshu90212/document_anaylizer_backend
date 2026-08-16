@@ -34,10 +34,11 @@ export class DocumentsService {
         .eq('document_file_hash', hashed_file_name)
         .maybeSingle();
       if (getImage && existRecord.success) {
-        return {
-          exist: true,
-          message: 'Already Exist',
-        };
+       return {
+  exist: true,
+  success: false,
+  message: "This record already exists. Please check the existing record before creating a new one.",
+};
       }
       const { data: uploadData, error: uploadError } = await client.storage
         .from('Documents')
@@ -68,6 +69,7 @@ export class DocumentsService {
 
       return {
         id: data.id,
+        status: "PROCESSING"
       };
     } catch (error: any) {
       throw new Error(error.message);
@@ -138,19 +140,22 @@ for await (const chunk of points  ) {
   fullResponse += content;
   console.log(content, "content")
 
-  this.SSeService.send(id, {
+  this.SSeService.send(`summary:${id}`, {
     event: 'chunk',
     chunk: content,
   });
 }
+    this.SSeService.send(`summary:${id}`, {
+    event: 'completed',
+  });
 
-    if (data) {
+    if (fullResponse) {
       let { data: summaryData, error: summaryError } = await this.client
         .from('summary_points')
         .insert({
           document_id: data.id,
           document_hash_id: data.document_file_hash,
-          summary_points: points,
+          summary_points: fullResponse,
         });
 
       if (!summaryError) {
@@ -190,15 +195,34 @@ for await (const chunk of points  ) {
             - Keep the response conversational and natural.
             - Do not make up facts.
             `;
-    const aiResponse = await this.aiService.chat(prompt);
+    const aiResponse = await this.aiService.chatStream(prompt);
+
+    let fullResponse = '';
+
+   for await (const chunk of aiResponse) {
+     const content = chunk.choices[0]?.delta?.content;
+
+     if (!content) continue;
+
+     fullResponse += content;
+     this.SSeService.send(`chat:${documentId}`, {
+         event: "chunk-ai-chat",
+         data: content
+      })    
+   }
+    this.SSeService.send(`chat:${documentId}`, {
+         event: "completed-chat"
+    })  
+    // SSE server sent events sending streams to frontend.
+    
+
     this.documentQueue.add('add-chat', {
       documentId: documentId,
-      message: aiResponse,
+      message: fullResponse,
       message_sender: 'AI_ASSITANT',
     });
-    console.log(aiResponse, 'Ai Response');
     return {
-      ai_message: aiResponse,
+        success: true
     };
   }
   async getDocumentById(id: string) {
@@ -214,6 +238,48 @@ for await (const chunk of points  ) {
     return data;
   }
 
+  async getSummaryPoints(id: string) {
+     let {data, error} = await this.client.from("summary_points").select("*").eq("document_id", id).single()
+
+     if (error) {
+        console.log(error)
+     }
+
+     return data;
+  }
+
+  async getChatsPerId(id: string) { 
+       
+       let {data, error} = await this.client.from('users_to_document_ai_chat').select("*").eq("document_id", id);
+
+       if (error) {
+          console.log(error);
+       }
+
+       return data;
+  }
+
+  async getRecentInformation() {
+      let {data: getUploadedFiles, error: getFileError} = 
+      await this.client.from("documents_meta")
+      .select().order('created_at', {ascending: false}).limit(2);
+
+      let {data: chatData, error: chatError} = await this.client
+      .from('users_to_document_ai_chat')
+      .select().order('created_at', {ascending: false}).limit(2);
+
+      if (chatError || getFileError) {
+         return {
+             error: 'Unable to Get Recent Data'
+         }
+      }
+
+      return {
+          chatData,
+          getUploadedFiles
+      }
+
+  }
   // async formatizer(id: string) {
   //   const document = await this.getDocumentById(id);
   //   console.log(document);

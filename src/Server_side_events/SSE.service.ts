@@ -6,38 +6,37 @@ export class ServerSideEventsService {
 
     private streams = new Map<string, Subject<MessageEvent>>();
 
-getStream(documentId: string) {
-  console.log("Opening stream:", documentId);
+getStream(channel: string) {
 
-  if (!this.streams.has(documentId)) {
-    console.log("Creating new Subject");
-    this.streams.set(documentId, new Subject<MessageEvent>());
+  if (!this.streams.has(channel)) {
+    this.streams.set(channel, new Subject<MessageEvent>());
   }
 
-  console.log("Current streams:", [...this.streams.keys()]);
-
-  return this.streams.get(documentId)!.asObservable();
+  return this.streams.get(channel)!.asObservable();
 }
 
-send(documentId: string, data: any) {
-  console.log("Sending to:", documentId);
-  console.log("Map keys:", [...this.streams.keys()]);
+   send(channel: string, data: any) {
+  console.log("📤 SEND:", channel);
 
-  const stream = this.streams.get(documentId);
+  const stream = this.streams.get(channel);
 
-  console.log("Stream object:", stream);
+  console.log("STREAM EXISTS:", !!stream);
 
-  if (stream) {
-    console.log("Calling next()");
-    stream.next({ data });
+  if (!stream) {
+    console.log("❌ NO STREAM FOR:", channel);
+    return;
   }
+
+  console.log("✅ SENDING:", data);
+
+  stream.next({
+    data
+  });
 }
 
-    close(documentId: string) {
-
-        this.streams.get(documentId)?.complete();
-
-        this.streams.delete(documentId);
+    close(channel: string) {
+        this.streams.get(channel)?.complete();
+        this.streams.delete(channel);
     }
 
 }
