@@ -14,7 +14,7 @@ export class AiService {
 
   async chat(message: string) {
     const completion = await this.AI.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       messages: [
         {
           role: 'user',
@@ -27,7 +27,7 @@ export class AiService {
   }
   async chatStream(message: string) {
       return this.AI.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+    model: "openai/gpt-oss-120b",
     stream: true,
     messages: [{ role: "user", content: message }],
   });

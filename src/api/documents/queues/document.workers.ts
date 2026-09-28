@@ -16,9 +16,13 @@ export class DocumentProcessor extends WorkerHost {
     super();
   }
   async process(job: Job): Promise<any> {
+
+    console.log("hello job it me");
+
     const { documentId } = job.data;
     switch (job.name) {
       case 'process-document':
+        console.log('hello it proccess document')
         return await this.generateSummary(documentId);
 
       case 'add-chat':

@@ -8,6 +8,7 @@ import { AiService } from 'src/ai/ai.service';
 import { ServerSideEventsService } from 'src/Server_side_events/SSE.service';
 import { ParserService } from 'src/service/parser.service';
 import { SupabaseService } from 'src/service/supabase.service';
+import { chunkText } from 'utils/chunk';
 @Injectable()
 export class DocumentsService {
   private readonly client: SupabaseClient;
@@ -34,11 +35,12 @@ export class DocumentsService {
         .eq('document_file_hash', hashed_file_name)
         .maybeSingle();
       if (getImage && existRecord.success) {
-       return {
-  exist: true,
-  success: false,
-  message: "This record already exists. Please check the existing record before creating a new one.",
-};
+        return {
+          exist: true,
+          success: false,
+          message:
+            'This record already exists. Please check the existing record before creating a new one.',
+        };
       }
       const { data: uploadData, error: uploadError } = await client.storage
         .from('Documents')
@@ -69,7 +71,7 @@ export class DocumentsService {
 
       return {
         id: data.id,
-        status: "PROCESSING"
+        status: 'PROCESSING',
       };
     } catch (error: any) {
       throw new Error(error.message);
@@ -77,93 +79,92 @@ export class DocumentsService {
   }
 
   async generateSummary(id: string) {
-    
-    let data = await this.getDocumentById(id);
-    let points: any;
-    if (data) {
-      let extracted = await this.parserService.extractDocument(
-        data.document_file_hash,
-        data.mime_type,
-      );
-      points = await this.aiService.chatStream(`
+    try {
+      let data = await this.getDocumentById(id);
+      let points: any;
+      const summaries: string[] = [];
+      let fullResponse = '';
+
+      if (data) {
+        let extracted = await this.parserService.extractDocument(
+          data.document_file_hash,
+          data.mime_type,
+        );
+        const chunks = chunkText(extracted);
+        for (const chunk of chunks) {
+          points = await this.aiService.chatStream(`
            Analyze the following document.
+           Format your response using valid Markdown.
+           Structure:
+           # Document Summary
+           Write 1-2 concise paragraphs summarizing the document.
+           ## Key Points
+           - Point 1
+           - Point 2
+           - Point 3
+           - Point 4
+           ## Important Information (only if applicable)
+           Use a table if the document contains structured data.
+           ## Conclusion (only if applicable)
+           Write a short concluding paragraph.
+           Formatting rules:
+           - Use Markdown only.
+           - Do NOT return JSON.
+           - Do NOT use Markdown code fences.
+           - Use headings (#, ##, ###).
+           - Use bullet lists (-).
+           - Use numbered lists when there is a sequence.
+           - Use **bold** only for important terms.
+           - Use *italic* only when necessary.
+           - Use tables whenever they improve readability.
+           - Use blockquotes (>) only for important notes or warnings.
+           - Keep paragraphs short (2–4 sentences).
+           - Leave one blank line between sections.
+           - Start immediately with "# Document Summary".
+           Document:
+          ${chunk}`);
+          summaries.push(points);
+        }
+         for await (const chunk of points) {
+        const content = chunk.choices[0]?.delta?.content;
 
-Format your response using valid Markdown.
+        if (!content) continue;
 
-Structure:
+        fullResponse += content;
+        console.log(content, 'content');
 
-# Document Summary
-
-Write 1-2 concise paragraphs summarizing the document.
-
-## Key Points
-
-- Point 1
-- Point 2
-- Point 3
-- Point 4
-
-## Important Information (only if applicable)
-
-Use a table if the document contains structured data.
-
-## Conclusion (only if applicable)
-
-Write a short concluding paragraph.
-
-Formatting rules:
-- Use Markdown only.
-- Do NOT return JSON.
-- Do NOT use Markdown code fences.
-- Use headings (#, ##, ###).
-- Use bullet lists (-).
-- Use numbered lists when there is a sequence.
-- Use **bold** only for important terms.
-- Use *italic* only when necessary.
-- Use tables whenever they improve readability.
-- Use blockquotes (>) only for important notes or warnings.
-- Keep paragraphs short (2–4 sentences).
-- Leave one blank line between sections.
-- Start immediately with "# Document Summary".
-
-Document:
-${extracted}`);
-    }
-
-let fullResponse = '';
-console.log(points, "points")
-for await (const chunk of points  ) {
-  const content = chunk.choices[0]?.delta?.content;
-
-  if (!content) continue;
-
-  fullResponse += content;
-  console.log(content, "content")
-
-  this.SSeService.send(`summary:${id}`, {
-    event: 'chunk',
-    chunk: content,
-  });
-}
-    this.SSeService.send(`summary:${id}`, {
-    event: 'completed',
-  });
-
-    if (fullResponse) {
-      let { data: summaryData, error: summaryError } = await this.client
-        .from('summary_points')
-        .insert({
-          document_id: data.id,
-          document_hash_id: data.document_file_hash,
-          summary_points: fullResponse,
+        this.SSeService.send(`summary:${id}`, {
+          event: 'chunk',
+          chunk: content,
         });
-
-      if (!summaryError) {
-        return {
-          status: 'COMPLETED',
-          data: summaryData,
-        };
       }
+        const combined = summaries.join('\n\n');
+      }
+
+      console.log(points, 'points');
+     
+      this.SSeService.send(`summary:${id}`, {
+        event: 'completed',
+      });
+
+      if (fullResponse) {
+        let { data: summaryData, error: summaryError } = await this.client
+          .from('summary_points')
+          .insert({
+            document_id: data.id,
+            document_hash_id: data.document_file_hash,
+            summary_points: fullResponse,
+          });
+
+        if (!summaryError) {
+          return {
+            status: 'COMPLETED',
+            data: summaryData,
+          };
+        }
+      }
+    } catch (error) {
+      console.log(error);
     }
   }
 
@@ -199,22 +200,21 @@ for await (const chunk of points  ) {
 
     let fullResponse = '';
 
-   for await (const chunk of aiResponse) {
-     const content = chunk.choices[0]?.delta?.content;
+    for await (const chunk of aiResponse) {
+      const content = chunk.choices[0]?.delta?.content;
 
-     if (!content) continue;
+      if (!content) continue;
 
-     fullResponse += content;
-     this.SSeService.send(`chat:${documentId}`, {
-         event: "chunk-ai-chat",
-         data: content
-      })    
-   }
+      fullResponse += content;
+      this.SSeService.send(`chat:${documentId}`, {
+        event: 'chunk-ai-chat',
+        data: content,
+      });
+    }
     this.SSeService.send(`chat:${documentId}`, {
-         event: "completed-chat"
-    })  
+      event: 'completed-chat',
+    });
     // SSE server sent events sending streams to frontend.
-    
 
     this.documentQueue.add('add-chat', {
       documentId: documentId,
@@ -222,7 +222,7 @@ for await (const chunk of points  ) {
       message_sender: 'AI_ASSITANT',
     });
     return {
-        success: true
+      success: true,
     };
   }
   async getDocumentById(id: string) {
@@ -232,53 +232,61 @@ for await (const chunk of points  ) {
       .eq('id', id)
       .single();
     // console.log(id)
-    // console.log(current_record);
-    let data = current_record.data;
+    console.log(current_record);
+    let data = current_record.data as any;
 
     return data;
   }
 
   async getSummaryPoints(id: string) {
-     let {data, error} = await this.client.from("summary_points").select("*").eq("document_id", id).single()
+    let { data, error } = await this.client
+      .from('summary_points')
+      .select('*')
+      .eq('document_id', id);
 
-     if (error) {
-        console.log(error)
-     }
+    if (error) {
+      console.log(error);
+    }
 
-     return data;
+    return data;
   }
 
-  async getChatsPerId(id: string) { 
-       
-       let {data, error} = await this.client.from('users_to_document_ai_chat').select("*").eq("document_id", id);
+  async getChatsPerId(id: string) {
+    let { data, error } = await this.client
+      .from('users_to_document_ai_chat')
+      .select('*')
+      .eq('document_id', id);
 
-       if (error) {
-          console.log(error);
-       }
+    if (error) {
+      console.log(error);
+    }
 
-       return data;
+    return data;
   }
 
   async getRecentInformation() {
-      let {data: getUploadedFiles, error: getFileError} = 
-      await this.client.from("documents_meta")
-      .select().order('created_at', {ascending: false}).limit(2);
+    let { data: getUploadedFiles, error: getFileError } = await this.client
+      .from('documents_meta')
+      .select()
+      .order('created_at', { ascending: false })
+      .limit(2);
 
-      let {data: chatData, error: chatError} = await this.client
+    let { data: chatData, error: chatError } = await this.client
       .from('users_to_document_ai_chat')
-      .select().order('created_at', {ascending: false}).limit(2);
+      .select()
+      .order('created_at', { ascending: false })
+      .limit(2);
 
-      if (chatError || getFileError) {
-         return {
-             error: 'Unable to Get Recent Data'
-         }
-      }
-
+    if (chatError || getFileError) {
       return {
-          chatData,
-          getUploadedFiles
-      }
+        error: 'Unable to Get Recent Data',
+      };
+    }
 
+    return {
+      chatData,
+      getUploadedFiles,
+    };
   }
   // async formatizer(id: string) {
   //   const document = await this.getDocumentById(id);
