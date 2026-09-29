@@ -9,6 +9,7 @@ import { ConfigService, ConfigModule } from "@nestjs/config";
            connection: {
             host: configService.getOrThrow<string>('REDIS_HOST') || '127.0.0.1',
             port: Number(configService.getOrThrow<string>('REDIS_PORT') || '6379'),
+            password: configService.getOrThrow<string>('REDIS_PASSWORD'),
             tls: {}
            }
         })
